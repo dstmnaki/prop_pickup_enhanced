@@ -13,4 +13,4 @@ sv_peMaxGrabDistance 50-100     --- How far players should be able to grab props
 sv_peMaxWeight 10-50            --- The heavier a prop is compared to this, the harder it is to move it (Default 20)
 
 Feel free to fork this and make edits, workshop version linked below
-(will be here)
+[Garry's Mod Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3769668689)
