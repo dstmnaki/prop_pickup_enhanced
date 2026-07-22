@@ -16,4 +16,7 @@ sv_peMaxWeight 10-50            --- The heavier a prop is compared to this, the 
 
 Feel free to fork this and make edits
 ```
+
+[Mini showcase on youtube](https://www.youtube.com/watch?v=SVSmuC1lYFo)
+
 [Garry's Mod Workshop Version](https://steamcommunity.com/sharedfiles/filedetails/?id=3769668689) | Status: Up to Date
