@@ -39,6 +39,19 @@ hook.Add( "AllowPlayerPickup", "_peBlockPickup", function( ply, ent )
 	if _isEnabled then return false end
 end )
 
+-- store picked up prop to prevent the current player from grabbing a prop while using physics gun on it
+hook.Add("PhysgunPickup", "_peStorePickedUpProp", function(ply, ent)
+    if IsValid(ply) then
+        ply._peHeldPropEntity = ent
+    end
+end)
+hook.Add("PhysgunDrop", "_peClearPickedUpProp", function(ply, ent)
+    if IsValid(ply) then
+        ply._peHeldPropEntity = nil
+    end
+end)
+
+
 -- helper function
 local function ClampToRange(vector,maxDistance)
 	return vector:Length() > maxDistance and vector:GetNormalized()*maxDistance or vector
@@ -123,6 +136,8 @@ hook.Add("Think","_peServerMain",function()
 	for k, ply in pairs(players) do
 		if not IsValid(ply) then players[k] = nil continue end -- failsafe in case a player is invalid, remove it from the table and continue to next player
 		if not ply:Alive() then continue end -- don't do shit if player is dead
+		
+		if ply._peHeldPropEntity != nil then continue end
 		
 		if ply._wasHolding and not ply._holdingProp then
 			RestoreWeaponAfterDrop(ply)
