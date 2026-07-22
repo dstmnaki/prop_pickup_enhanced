@@ -14,4 +14,6 @@ sv_peEnabled 0/1                --- Enable Prop Pickup Enhanced (Default 1)
 sv_peMaxGrabDistance 50-100     --- How far players should be able to grab props from (Default 75)
 sv_peMaxWeight 10-50            --- The heavier a prop is compared to this, the harder it is to move it (Default 20)
 ```
-Feel free to fork this and make edits, [Garry's Mod Workshop Version](https://steamcommunity.com/sharedfiles/filedetails/?id=3769668689)
+Feel free to fork this and make edits
+[Garry's Mod Workshop Version](https://steamcommunity.com/sharedfiles/filedetails/?id=3769668689)
+Version Status: Up to Date
