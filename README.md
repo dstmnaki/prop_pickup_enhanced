@@ -1,7 +1,8 @@
 ```Really simple amnesia/repo style prop pickup that replaces the default +USE/E pickup system
 
 Simply look at a prop, be close enough and hold E, now move your mouse
-If you have a prop protection addon, this *should* support CPPI system, permissions are behind CPPICanPhysgun, so anyone you have given physgun perms should be able to move your props
+If you have a prop protection addon, this *should* support CPPI system
+Permissions are behind CPPICanPhysgun, so anyone you have given physgun perms should be able to move your props
 
 More settings in Utilities -> Admin -> Prop Pickup Enhanced
 
