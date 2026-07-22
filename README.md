@@ -1,6 +1,8 @@
 ```
 Really simple amnesia/repo style prop pickup that replaces the default +USE/E pickup system
 
+Assuming i didn't screw things up, this also allows multiple people carry the same prop in multiplayer
+
 Simply look at a prop, be close enough and hold E, now move your mouse
 If you have a prop protection addon, this *should* support CPPI system
 Permissions are behind CPPICanPickup, so anyone you have given +USE perms should be able to move your props
