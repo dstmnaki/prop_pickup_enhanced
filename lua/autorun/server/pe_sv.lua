@@ -118,9 +118,9 @@ local function CanPlayerGrabProp(ply, ent)
         return allow
     end
 	
-    -- CPPI support
-    if ent.CPPICanPhysgun then
-        local allowed = ent:CPPICanPhysgun(ply)
+    -- CPPI support, thanks straw for info
+    if ent.CPPICanPickup then
+        local allowed = ent:CPPICanPickup(ply)
         if allowed == false then
             return false
         end
