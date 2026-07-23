@@ -7,10 +7,15 @@ Simply look at a prop, be close enough and hold E, now move your mouse
 If you have a prop protection addon, this *should* support CPPI system
 Permissions are behind CPPICanPickup, so anyone you have given +USE perms should be able to move your props
 
+SWEP controls:
+Mouse 1 (Hold) - Grab onto a prop
+
+The swep can be found in "Other" category
+
 More settings in Utilities -> Admin -> Prop Pickup Enhanced
 
 Convars:
-sv_peEnabled 0/1                --- Enable Prop Pickup Enhanced (Default 1)
+sv_peEnabled 0/1/2              --- Prop Pickup Mode Disabled/Enabled/SWEP only (Default 1)
 sv_peMaxGrabDistance 50-100     --- How far players should be able to grab props from (Default 75)
 sv_peMaxWeight 10-50            --- The heavier a prop is compared to this, the harder it is to move it (Default 20)
 
