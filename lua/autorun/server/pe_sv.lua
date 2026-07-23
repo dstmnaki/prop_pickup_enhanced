@@ -2,6 +2,20 @@
 AddCSLuaFile("autorun/client/pe_cl.lua")
 AddCSLuaFile("weapons/weapon_prop_pickup_enhanced_hands.lua")
 
+-- allowed classes system
+local peAllowedClasses = {}
+
+-- helper functions, you can call these from your own addons if you wish to allow a class to be picked up
+function peAllowClass(class,isAllowed)
+	peAllowedClasses[class] = isAllowed ~= nil and true or isAllowed
+end
+function peIsClassAllowed(class) -- added this just in case you wish to do some checking
+	return peAllowedClasses[class] == true
+end
+
+-- if you really wish, you can disallow this by writing your own addon that sets this to false (or nil), tho i'd toss it to a timer so these are defined first
+peAllowClass("prop_physics",true)
+
 -- convar stuff
 local pickupMode = CreateConVar("sv_peEnabled", "1", {FCVAR_ARCHIVE, FCVAR_NOTIFY, FCVAR_REPLICATED}, "0/1/2 | Disabled/Enabled/SWEP only"):GetInt()
 local isEnabled = pickupMode > 0
@@ -72,7 +86,14 @@ hook.Add("PlayerSwitchWeapon", "_pePlayerSwitchWeapon", function(ply)
 end)
 
 local function CanPlayerGrabProp(ply, ent)
-	if not IsValid(ply) or not IsValid(ent) or ent.pe_blockgrabbing then return false end
+	if not IsValid(ply) or
+	not IsValid(ent) or
+	ent:IsMarkedForDeletion() or
+	peAllowedClasses[ent:GetClass()] ~= true or
+	ent.pe_blockgrabbing or
+	not (IsValid(ent:GetPhysicsObject()) and ent:GetPhysicsObject():IsMoveable()) then
+		return false
+	end
 	
 	local allow = hook.Run("PE_CanPickupProp", ply, ent)
 	if allow ~= nil then
@@ -176,7 +197,7 @@ hook.Add("Think","_peServerMain",function()
 		if not IsValid(ply) or not ply:Alive() or ply:GetNWBool("pe_blockGrabbing") then continue end --dead or nil 
 
 		local ent = ply:GetNWEntity("pe_heldEntity")
-		if not IsValid(ent) or not ent:GetPhysicsObject():IsMoveable() or ent:IsMarkedForDeletion() then
+		if not IsValid(ent) or not (IsValid(ent:GetPhysicsObject()) and ent:GetPhysicsObject():IsMoveable()) or ent:IsMarkedForDeletion() then
 			setHeldEntity(ply, nil)
 			peReturnWeapon(ply)
 			continue
