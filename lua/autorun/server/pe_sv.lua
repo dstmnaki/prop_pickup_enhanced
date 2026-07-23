@@ -3,64 +3,137 @@ AddCSLuaFile("autorun/client/pe_cl.lua")
 AddCSLuaFile("weapons/weapon_prop_pickup_enhanced_hands.lua")
 
 -- convar stuff
-CreateConVar("sv_peEnabled", "1", {FCVAR_ARCHIVE, FCVAR_NOTIFY, FCVAR_REPLICATED}, "Enable Prop Pickup Enhanced")
-CreateConVar("sv_peMaxGrabDistance", "75", {FCVAR_ARCHIVE, FCVAR_NOTIFY, FCVAR_REPLICATED}, "How far players should be able to grab props from")
-CreateConVar("sv_peMaxWeight", "20", {FCVAR_ARCHIVE, FCVAR_NOTIFY, FCVAR_REPLICATED}, "The heavier a prop is compared to this, the harder it is to move it")
-
--- some functions to return values
-local function peIsEnabled()
-	return GetConVar( "sv_peEnabled" ) and GetConVar("sv_peEnabled"):GetBool() or false
-end
-local function peGetGrabDistance()
-	return GetConVar( "sv_peMaxGrabDistance" ) and tonumber(GetConVar( "sv_peMaxGrabDistance" ):GetString()) or 75
-end
-local function peGetMaxWeight()
-	return GetConVar( "sv_peMaxWeight" ) and tonumber(GetConVar( "sv_peMaxWeight" ):GetString()) or 20
-end
-
--- predefine variables
-local _isEnabled = peIsEnabled()
-local _maxGrabDistance = peGetGrabDistance()
-local _maxWeight = peGetMaxWeight()
+local isEnabled = CreateConVar("sv_peEnabled", "1", {FCVAR_ARCHIVE, FCVAR_NOTIFY, FCVAR_REPLICATED}, "Enable Prop Pickup Enhanced"):GetBool()
+local maxGrabDistance = CreateConVar("sv_peMaxGrabDistance", "75", {FCVAR_ARCHIVE, FCVAR_NOTIFY, FCVAR_REPLICATED}, "How far players should be able to grab props from"):GetFloat()
+local maxWeight = CreateConVar("sv_peMaxWeight", "20", {FCVAR_ARCHIVE, FCVAR_NOTIFY, FCVAR_REPLICATED}, "The heavier a prop is compared to this, the harder it is to move it"):GetFloat()
+local swepOnly = CreateConVar("sv_peSwepOnly", "0", {FCVAR_ARCHIVE, FCVAR_NOTIFY, FCVAR_REPLICATED}, "Should Prop Pickup Enhanced only work with the swep?"):GetBool()
 
 -- callbacks to update values, took way too long to figure this out... i had all of the checking and updating happening in the think loop...
-cvars.AddChangeCallback( "sv_peEnabled", function()
-	_isEnabled = peIsEnabled()
-end, nil)
-cvars.AddChangeCallback( "sv_peMaxGrabDistance", function()
-	_maxGrabDistance = peGetGrabDistance()
-end, nil)
-cvars.AddChangeCallback( "sv_peMaxWeight", function()
-	_maxWeight = peGetMaxWeight()
-end, nil)
+cvars.AddChangeCallback("sv_peEnabled", function() isEnabled = GetConVar("sv_peEnabled"):GetBool() end)
+cvars.AddChangeCallback("sv_peMaxGrabDistance", function() maxGrabDistance = GetConVar("sv_peMaxGrabDistance"):GetFloat() end)
+cvars.AddChangeCallback("sv_peMaxWeight", function() maxWeight = GetConVar("sv_peMaxWeight"):GetFloat() end)
 
 -- block default prop pickup if the system is enabled
-hook.Add( "AllowPlayerPickup", "_peBlockPickup", function( ply, ent )
-	if _isEnabled then return false end
+hook.Add("AllowPlayerPickup", "_peBlockPickup", function(ply, ent)
+	--if swep is equipped
+	local wep = ply:GetActiveWeapon()
+	if not IsValid(wep) then return end 
+	if swepOnly and wep:GetClass() == "weapon_prop_pickup_enhanced_hands" then return false end 
+
+	--otherwise, check if enabled
+	if isEnabled then return false end
 end )
 
--- store picked up prop to prevent the current player from grabbing a prop while using physics gun on it
+local function setHeldEntity(ply, ent)
+	ply:SetNWBool("pe_blockGrabbing", nil)
+	ply:SetNWEntity("pe_heldEntity", ent) --do this so starfall peeps can access it
+	if not IsValid(ent) then return end --if set to nil entity (aka clearing entity)
+	
+	ent.pe_heldProperties = ent.pe_heldProperties or {}
+
+	local aimPos = ply:GetEyeTrace().HitPos
+	local relativePos = ent:WorldToLocal(aimPos)
+
+	local distance = (ply:EyePos()-aimPos):Length()
+	ent.pe_heldProperties.physObj = ent:GetPhysicsObject()
+	ent.pe_heldProperties.relativePos = ent:WorldToLocal(aimPos)
+	ent.pe_heldProperties.distance = distance
+
+	local obb = ent:OBBMaxs()-ent:OBBMins()
+	local volume = (obb.x+obb.y+obb.z)/3
+	ent.pe_heldProperties.volume = volume
+end
+
+-- deny grabbing entities if 
 hook.Add("PhysgunPickup", "_peStorePickedUpProp", function(ply, ent)
-    if IsValid(ply) then
-        ply._peHeldPropEntity = ent
-    end
-end)
-hook.Add("PhysgunDrop", "_peClearPickedUpProp", function(ply, ent)
-    if IsValid(ply) then
-        ply._peHeldPropEntity = nil
-    end
+	if IsValid(ply) then
+		ent.pe_blockgrabbing = true
+		ply:SetNWBool("pe_blockGrabbing", true) 
+		setHeldEntity(ply, nil)
+	end
 end)
 
+hook.Add("PhysgunDrop", "_peClearPickedUpProp", function(ply, ent)
+	if IsValid(ply) then
+		ent.pe_blockgrabbing = nil
+		ply:SetNWBool("pe_blockGrabbing", nil)
+	end
+end)
+
+hook.Add("PlayerSwitchWeapon", "_pePlayerSwitchWeapon", function(ply)
+	local ent = ply:GetNWEntity("pe_heldEntity")
+	if IsValid(ent) then 
+		return true
+	end
+end)
+
+local function CanPlayerGrabProp(ply, ent)
+	if not IsValid(ply) or not IsValid(ent) or ent.pe_blockgrabbing then return false end
+	
+	local allow = hook.Run("PE_CanPickupProp", ply, ent)
+	if allow ~= nil then
+		return allow
+	end
+	
+	if CPPI then return ent:CPPICanPickup(ply) end
+	return true
+end
+
+function PE_LookForEntity(ply, drop)
+	if drop == true then 
+		setHeldEntity(ply, nil)
+		return
+	end
+	
+	local tr = util.TraceLine({
+		start = ply:EyePos(),
+		endpos = ply:EyePos() + ply:GetAimVector()*maxGrabDistance,
+		filter = ply
+	}) -- limited range eye trace
+
+	if not tr.Hit then return end 
+	if not CanPlayerGrabProp(ply, tr.Entity) then return end 
+	setHeldEntity(ply, tr.Entity)
+end
+
+--find entity to grab
+local prevWeapon = {}
+hook.Add("PlayerUse", "_pePlayerUse", function(ply, ent)
+	if not IsValid(ply) or not IsValid(ent) then return end 
+	if not isEnabled then 
+		if IsValid(ply:GetActiveWeapon()) and ply:GetActiveWeapon():GetClass() ~= "weapon_prop_pickup_enhanced_hands" then 
+			return 
+		end
+	end
+
+	if not IsValid(ply:GetNWEntity("pe_heldEntity")) then 
+		PE_LookForEntity(ply)
+		prevWeapon[ply] = ply:GetActiveWeapon()
+		ply:SetActiveWeapon(NULL)
+	end
+end)
+
+--released entity
+hook.Add("KeyRelease", "_peKeyUp", function(ply, key)
+	if not IsValid(ply) or not key or not IsFirstTimePredicted() then return end 
+	if key == IN_USE or key == IN_ATTACK then 
+		setHeldEntity(ply, nil) 
+		if prevWeapon[ply] then
+			ply:SelectWeapon(prevWeapon[ply])
+			prevWeapon[ply] = nil
+		end
+	end
+end)
 
 -- helper function
-local function ClampToRange(vector,maxDistance)
-	return vector:Length() > maxDistance and vector:GetNormalized()*maxDistance or vector
+local function ClampToRange(vector, maxDistance)
+	return vector:GetNormalized() * math.min(vector:Length(), maxDistance)
 end
 
 -- also helper function, thanks cheezus
 local m_in_sq = 1 / 39.37 ^ 2 -- in^2 to m^2
-local const = m_in_sq * 360 / (2 * 3.1416)
-local function ApplyForceOffsetFixed(ent,force,pos)
+local const = m_in_sq * 360 / (2 * math.pi)
+local function ApplyForceOffsetFixed(ent, force, pos)
 	if not IsValid(ent) then return end
 	ent:ApplyForceCenter(force)
 
@@ -70,158 +143,41 @@ local function ApplyForceOffsetFixed(ent,force,pos)
 	ent:ApplyTorqueCenter(angf)
 end
 
-local function HolsterActiveWeaponForPickup(ply)
-    if not IsValid(ply) or not ply:Alive() then return end
-	
-    local activeWep = ply:GetActiveWeapon()
-    if IsValid(activeWep) and activeWep:GetClass() ~= "weapon_prop_pickup_enhanced_hands" then
-        ply._prevWeapon = activeWep:GetClass()
-    end
-	
-    if not ply:HasWeapon("weapon_prop_pickup_enhanced_hands") then
-        ply:Give("weapon_prop_pickup_enhanced_hands")
-    end
-	
-    ply:SelectWeapon("weapon_prop_pickup_enhanced_hands")
-end
-
-local function RestoreWeaponAfterDrop(ply)
-    if not IsValid(ply) or not ply:Alive() then return end
-	
-    if not ply:HasWeapon("weapon_prop_pickup_enhanced_hands") then return end
-    local previousWepClass = ply._prevWeapon
-	
-    if previousWepClass and ply:HasWeapon(previousWepClass) then
-        ply:SelectWeapon(previousWepClass)
-    else
-        local weapons = ply:GetWeapons()
-        if #weapons > 0 then
-            ply:SelectWeapon(weapons[1]:GetClass())
-        end
-    end
-	
-    timer.Simple(0.1, function()
-        if IsValid(ply) and ply:HasWeapon("weapon_prop_pickup_enhanced_hands") then
-            ply:StripWeapon("weapon_prop_pickup_enhanced_hands")
-        end
-    end)
-end
-
-local function CanPlayerGrabProp(ply, ent)
-    if not IsValid(ply) or not IsValid(ent) then
-        return false
-    end
-	
-    local allow = hook.Run("PE_CanPickupProp", ply, ent)
-
-    if allow ~= nil then
-        return allow
-    end
-	
-    -- CPPI support, thanks straw for info
-    if ent.CPPICanPickup then
-        local allowed = ent:CPPICanPickup(ply)
-        if allowed == false then
-            return false
-        end
-    end
-
-    return true
-end
-
+--main loop
 hook.Add("Think","_peServerMain",function()
-	if not _isEnabled then return end
-	local players = player.GetAll()
-	if table.IsEmpty(players) then return end
-	for k, ply in pairs(players) do
-		if not IsValid(ply) then players[k] = nil continue end -- failsafe in case a player is invalid, remove it from the table and continue to next player
-		if not ply:Alive() then continue end -- don't do shit if player is dead
+	for _, ply in ipairs(player.GetHumans()) do 
+		if not IsValid(ply) or not ply:Alive() or ply:GetNWBool("pe_blockGrabbing") then continue end --dead or nil 
+
+		local ent = ply:GetNWEntity("pe_heldEntity")
+		if not IsValid(ent) or not ent:GetPhysicsObject():IsMoveable() then continue end --not holding anything, or unmovable object
+
+		--move the shit 
+		local properties = ent.pe_heldProperties
+		if not properties or table.IsEmpty(properties) then continue end 
+
+		local physObj, relativePos, distance, volume = properties.physObj, properties.relativePos, properties.distance, properties.volume
+		if not IsValid(physObj) then continue end
 		
-		if ply._peHeldPropEntity != nil then continue end
+		local targetPos = ply:EyePos() + ply:GetAimVector() * distance -- holding position should move towards where you aim + forward by stored distance
+		local holdPos = ent:LocalToWorld(relativePos)
 		
-		if ply._wasHolding and not ply._holdingProp then
-			RestoreWeaponAfterDrop(ply)
-			ply._wasHolding = false
-		end -- restore weapon if not holding a prop
+		local mass = physObj:GetMass()
+		local carryForce = 1/(1+math.Clamp((-maxWeight/2+mass+volume*1.5)/250,0,100)) -- some very random math to make sure heavy/large props are harder to carry/move, not perfect by any means
 		
-		if not ply:KeyDown(IN_USE) then
-			ply._holdingProp = nil
-			continue
-		end -- if player is not holding +use/E skip to next person, also reset some values
+		local diff = (targetPos-holdPos)
+		local diffClamped = ClampToRange(diff, 300*carryForce)
+		local damp = (physObj:GetVelocityAtPoint(holdPos)) * 0.1
+		local force = (diffClamped - damp) * (carryForce * carryForce)
 		
-		if ply._wasHolding == false or ply._holdingProp == nil or not IsValid(ply._holdingProp._ent) or not IsValid(ply._holdingProp._physObj) then
-			-- if player wasn't holding a prop, the holding prop is invalid or table data is invalid run following
-			local _tr = util.TraceLine({
-				start = ply:EyePos(),
-				endpos = ply:EyePos()+ply:GetAimVector()*_maxGrabDistance,
-				filter = ply
-			}) -- eye trace
-			
-			local _ent = _tr.Entity
-			
-			if not IsValid(_ent) then continue end
-			local _physObj = _ent:GetPhysicsObject()
-			
-			if not CanPlayerGrabProp(ply, _ent) then
-				continue
+		if diff:Length() > maxGrabDistance then 
+			setHeldEntity(ply, nil); 
+			if prevWeapon[ply] then
+				ply:SetActiveWeapon(prevWeapon[ply])
+				prevWeapon[ply] = nil
 			end
-			
-			if not (IsValid(_physObj) and _physObj:IsMoveable()) then continue end
-			-- if entity's physics object is valid and not frozen, run following
-			
-			local _aimPos = _tr.HitPos
-			local _relativePos = _ent:WorldToLocal(_aimPos)
-			local _distance = (ply:EyePos()-_aimPos):Length()
-			
-			local _obb = _ent:OBBMaxs()-_ent:OBBMins()
-			local _volume = (_obb.x+_obb.y+_obb.z)/3
-			
-			ply._wasHolding = true
-			
-			HolsterActiveWeaponForPickup(ply)
-			
-			ply._holdingProp = {
-				_ent = _ent,
-				_physObj = _physObj,
-				_relativePos = _relativePos,
-				_distance = _distance,
-				_volume = _volume
-			} -- write prop carry info to player
-		else
-			-- if player is holding a prop
-			local _ent = ply._holdingProp._ent
-			if not IsValid(_ent) or _ent:IsMarkedForDeletion() then
-				ply._holdingProp = nil
-				continue -- if entity becomes invalid somehow, return early to look for next prop
-			end
-			local _physObj = ply._holdingProp._physObj
-			if not IsValid(_physObj) then
-				ply._holdingProp = nil
-				continue -- also return early if the physics object is invalid
-			end
-			local _relativePos = ply._holdingProp._relativePos
-			local _distance = ply._holdingProp._distance -- stores the distance the prop was at when it was picked up
-			
-			local _targetPos = ply:EyePos() + ply:GetAimVector() * _distance -- holding position should move towards where you aim + forward by stored distance
-			local _holdPos = _ent:LocalToWorld(_relativePos)
-			
-			local _volume = ply._holdingProp._volume
-			
-			local _mass = _physObj:GetMass()
-			
-			local _carryForce = 1/(1+math.Clamp((-_maxWeight/2+_mass+_volume*1.5)/250,0,100)) -- some very random math to make sure heavy/large props are harder to carry/move, not perfect by any means
-			
-			local _diff = (_targetPos-_holdPos)
-			local _diffClamped = ClampToRange(_diff, 300*_carryForce)
-			local _damp = (_physObj:GetVelocityAtPoint(_holdPos)) * 0.1
-			local _force = (_diffClamped - _damp) * (_carryForce * _carryForce)
-			
-			if _diff:Length() > _maxGrabDistance * 1.5 then
-				ply._holdingProp = nil
-				continue -- if the prop goes too far, stop holding
-			end
-			
-			ApplyForceOffsetFixed(_physObj, _force * _mass * FrameTime() * 100, _holdPos)
-		end
+			continue 
+		end --got too far away
+		
+		ApplyForceOffsetFixed(physObj, force * mass * FrameTime() * 100, holdPos)
 	end
 end)
