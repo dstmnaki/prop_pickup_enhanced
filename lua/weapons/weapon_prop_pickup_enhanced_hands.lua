@@ -1,8 +1,8 @@
 -- template swep, except it has no visible model, animations or functionality
 
-SWEP.PrintName          	= "Fancy Hands"
+SWEP.PrintName          	= "Prop Pickup Enhanced - Hands"
 SWEP.Author             	= "Nakkitsunami"
-SWEP.Instructions       	= "You should not see me..."
+SWEP.Instructions       	= "Check out these massive guns!"
 SWEP.Spawnable          	= true
 SWEP.Slot					= 1
 

@@ -3,13 +3,18 @@ AddCSLuaFile("autorun/client/pe_cl.lua")
 AddCSLuaFile("weapons/weapon_prop_pickup_enhanced_hands.lua")
 
 -- convar stuff
-local isEnabled = CreateConVar("sv_peEnabled", "1", {FCVAR_ARCHIVE, FCVAR_NOTIFY, FCVAR_REPLICATED}, "Enable Prop Pickup Enhanced"):GetBool()
+local pickupMode = CreateConVar("sv_peEnabled", "1", {FCVAR_ARCHIVE, FCVAR_NOTIFY, FCVAR_REPLICATED}, "0/1/2 | Disabled/Enabled/SWEP only"):GetInt()
+local isEnabled = pickupMode > 0
+local swepOnly = pickupMode == 2
 local maxGrabDistance = CreateConVar("sv_peMaxGrabDistance", "75", {FCVAR_ARCHIVE, FCVAR_NOTIFY, FCVAR_REPLICATED}, "How far players should be able to grab props from"):GetFloat()
 local maxWeight = CreateConVar("sv_peMaxWeight", "20", {FCVAR_ARCHIVE, FCVAR_NOTIFY, FCVAR_REPLICATED}, "The heavier a prop is compared to this, the harder it is to move it"):GetFloat()
-local swepOnly = CreateConVar("sv_peSwepOnly", "0", {FCVAR_ARCHIVE, FCVAR_NOTIFY, FCVAR_REPLICATED}, "Should Prop Pickup Enhanced only work with the swep?"):GetBool()
 
 -- callbacks to update values, took way too long to figure this out... i had all of the checking and updating happening in the think loop...
-cvars.AddChangeCallback("sv_peEnabled", function() isEnabled = GetConVar("sv_peEnabled"):GetBool() end)
+cvars.AddChangeCallback("sv_peEnabled", function()
+	pickupMode = GetConVar("sv_peEnabled"):GetInt()
+	isEnabled = pickupMode > 0
+	swepOnly = pickupMode == 2
+end)
 cvars.AddChangeCallback("sv_peMaxGrabDistance", function() maxGrabDistance = GetConVar("sv_peMaxGrabDistance"):GetFloat() end)
 cvars.AddChangeCallback("sv_peMaxWeight", function() maxWeight = GetConVar("sv_peMaxWeight"):GetFloat() end)
 
@@ -17,11 +22,10 @@ cvars.AddChangeCallback("sv_peMaxWeight", function() maxWeight = GetConVar("sv_p
 hook.Add("AllowPlayerPickup", "_peBlockPickup", function(ply, ent)
 	--if swep is equipped
 	local wep = ply:GetActiveWeapon()
-	if not IsValid(wep) then return end 
-	if swepOnly and wep:GetClass() == "weapon_prop_pickup_enhanced_hands" then return false end 
+	if swepOnly and IsValid(wep) and wep:GetClass() == "weapon_prop_pickup_enhanced_hands" then return false end 
 
 	--otherwise, check if enabled
-	if isEnabled then return false end
+	if isEnabled and not swepOnly then return false end
 end )
 
 local function setHeldEntity(ply, ent)
@@ -92,35 +96,58 @@ function PE_LookForEntity(ply, drop)
 	}) -- limited range eye trace
 
 	if not tr.Hit then return end 
-	if not CanPlayerGrabProp(ply, tr.Entity) then return end 
-	setHeldEntity(ply, tr.Entity)
+	local ent = tr.Entity
+	if not CanPlayerGrabProp(ply, ent) then return end 
+	setHeldEntity(ply, ent)
+	return ent
 end
 
 --find entity to grab
 local prevWeapon = {}
 hook.Add("PlayerUse", "_pePlayerUse", function(ply, ent)
 	if not IsValid(ply) or not IsValid(ent) then return end 
-	if not isEnabled then 
-		if IsValid(ply:GetActiveWeapon()) and ply:GetActiveWeapon():GetClass() ~= "weapon_prop_pickup_enhanced_hands" then 
-			return 
-		end
+	local activeWeapon = ply:GetActiveWeapon()
+	if not isEnabled or swepOnly then return end
+	
+	if IsValid(activeWeapon) and activeWeapon:GetClass() == "weapon_prop_pickup_enhanced_hands" then 
+		return 
 	end
-
+	
 	if not IsValid(ply:GetNWEntity("pe_heldEntity")) then 
-		PE_LookForEntity(ply)
-		prevWeapon[ply] = ply:GetActiveWeapon()
+		local ent = PE_LookForEntity(ply)
+		if not IsValid(ent) then return end
+		if IsValid(activeWeapon) and activeWeapon ~= NULL then
+			prevWeapon[ply] = activeWeapon:GetClass()
+		end
 		ply:SetActiveWeapon(NULL)
 	end
 end)
 
+local function peReturnWeapon(ply)
+	local class = prevWeapon[ply]
+	if class ~= nil then
+		if !ply:GetWeapon(class):IsValid() then
+			ply:Give(prevWeaponClass)
+		end
+		
+		ply:SelectWeapon(class)
+		prevWeapon[ply] = nil
+	end
+end
+
 --released entity
 hook.Add("KeyRelease", "_peKeyUp", function(ply, key)
-	if not IsValid(ply) or not key or not IsFirstTimePredicted() then return end 
-	if key == IN_USE or key == IN_ATTACK then 
-		setHeldEntity(ply, nil) 
-		if prevWeapon[ply] then
-			ply:SelectWeapon(prevWeapon[ply])
-			prevWeapon[ply] = nil
+	if not IsValid(ply) or not key or not IsFirstTimePredicted() then return end
+	if swepOnly then
+		if key == IN_ATTACK then
+			setHeldEntity(ply, nil)
+			peReturnWeapon(ply)
+		end
+	else
+		local activeWeapon = ply:GetActiveWeapon()
+		if (IsValid(activeWeapon) and activeWeapon:GetClass() == "weapon_prop_pickup_enhanced_hands") and key == IN_ATTACK or key == IN_USE then
+			setHeldEntity(ply, nil)
+			peReturnWeapon(ply)
 		end
 	end
 end)
@@ -150,11 +177,11 @@ hook.Add("Think","_peServerMain",function()
 
 		local ent = ply:GetNWEntity("pe_heldEntity")
 		if not IsValid(ent) or not ent:GetPhysicsObject():IsMoveable() then continue end --not holding anything, or unmovable object
-
+		
 		--move the shit 
 		local properties = ent.pe_heldProperties
 		if not properties or table.IsEmpty(properties) then continue end 
-
+		
 		local physObj, relativePos, distance, volume = properties.physObj, properties.relativePos, properties.distance, properties.volume
 		if not IsValid(physObj) then continue end
 		
@@ -169,12 +196,9 @@ hook.Add("Think","_peServerMain",function()
 		local damp = (physObj:GetVelocityAtPoint(holdPos)) * 0.1
 		local force = (diffClamped - damp) * (carryForce * carryForce)
 		
-		if diff:Length() > maxGrabDistance then 
+		if diff:Length() > maxGrabDistance or (not swepOnly and not ply:KeyDown(IN_USE)) then 
 			setHeldEntity(ply, nil); 
-			if prevWeapon[ply] then
-				ply:SetActiveWeapon(prevWeapon[ply])
-				prevWeapon[ply] = nil
-			end
+			peReturnWeapon(ply)
 			continue 
 		end --got too far away
 		
