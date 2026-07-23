@@ -20,6 +20,20 @@ sv_peMaxGrabDistance 50-100     --- How far players should be able to grab props
 sv_peMaxWeight 10-50            --- The heavier a prop is compared to this, the harder it is to move it (Default 20)
 
 Feel free to fork this and make edits
+
+
+For developers:
+
+Functions:
+peAllowClass(class,isAllowed)  --- Sets the class to be allowed based on isAllowed boolean, use this to allow or disallow classes
+ -alias peAllowClass(class)    --- Sets the class to be allowed, without boolean
+
+peIsClassAllowed(class)        --- Returns true if class is allowed, even if not defined to be allowed/disallowed prior (if the class does not return true, returns false)
+
+PE_LookForEntity(ply, drop)    --- Tries to grab a prop a player is looking at, if drop set to true, clears the entity
+
+NW variables
+ply:GetNWEntity("pe_heldEntity") - Returns the prop a player is holding
 ```
 
 [Mini showcase on youtube](https://www.youtube.com/watch?v=SVSmuC1lYFo)
