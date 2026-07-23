@@ -1,6 +1,6 @@
 -- template swep, except it has no visible model, animations or functionality
 
-SWEP.PrintName          	= "Prop Pickup Enhanced - Hands"
+SWEP.PrintName          	= "Prop Pickup Hands"
 SWEP.Author             	= "Nakkitsunami"
 SWEP.Instructions       	= "Check out these massive guns!"
 SWEP.Spawnable          	= true

@@ -1,3 +1,14 @@
+hook.Add("HUDShouldDraw", "_peHideWeaponWheel", function(element)
+    local ply = LocalPlayer()
+    if not IsValid(ply) then return end
+	
+    local ent = ply:GetNWEntity("pe_heldEntity")
+	if IsValid(ent) and element == "CHudWeaponSelection" then
+		return false
+	end
+end) -- prevent weapon selection entirely when holding a prop
+
+
 hook.Add("PopulateToolMenu", "_peAdminMenuSettings", function()
 	spawnmenu.AddToolMenuOption("Utilities", "Admin", "CustomPickupAdminSettings", "Prop Pickup Enhanced", "", "", function(panel)
 		panel:ClearControls()

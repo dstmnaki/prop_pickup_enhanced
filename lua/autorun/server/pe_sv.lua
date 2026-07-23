@@ -30,7 +30,7 @@ end )
 
 local function setHeldEntity(ply, ent)
 	ply:SetNWBool("pe_blockGrabbing", nil)
-	ply:SetNWEntity("pe_heldEntity", ent) --do this so starfall peeps can access it
+	ply:SetNWEntity("pe_heldEntity", ent == nil and NULL or ent) --do this so starfall peeps can access it
 	if not IsValid(ent) then return end --if set to nil entity (aka clearing entity)
 	
 	ent.pe_heldProperties = ent.pe_heldProperties or {}
@@ -176,7 +176,11 @@ hook.Add("Think","_peServerMain",function()
 		if not IsValid(ply) or not ply:Alive() or ply:GetNWBool("pe_blockGrabbing") then continue end --dead or nil 
 
 		local ent = ply:GetNWEntity("pe_heldEntity")
-		if not IsValid(ent) or not ent:GetPhysicsObject():IsMoveable() then continue end --not holding anything, or unmovable object
+		if not IsValid(ent) or not ent:GetPhysicsObject():IsMoveable() or ent:IsMarkedForDeletion() then
+			setHeldEntity(ply, nil)
+			peReturnWeapon(ply)
+			continue
+		end --not holding anything, or unmovable object
 		
 		--move the shit 
 		local properties = ent.pe_heldProperties
@@ -197,7 +201,7 @@ hook.Add("Think","_peServerMain",function()
 		local force = (diffClamped - damp) * (carryForce * carryForce)
 		
 		if diff:Length() > maxGrabDistance or (not swepOnly and not ply:KeyDown(IN_USE)) then 
-			setHeldEntity(ply, nil); 
+			setHeldEntity(ply, nil)
 			peReturnWeapon(ply)
 			continue 
 		end --got too far away
