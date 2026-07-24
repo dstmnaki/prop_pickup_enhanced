@@ -1,3 +1,5 @@
+CreateClientConVar("pe_grabmode", "0", true, true, "0 = hold, 1 = tap to toggle", 0, 1)
+
 hook.Add("HUDShouldDraw", "_peHideWeaponWheel", function(element)
     local ply = LocalPlayer()
     if not IsValid(ply) then return end
@@ -13,6 +15,10 @@ hook.Add("PopulateToolMenu", "_peAdminMenuSettings", function()
 	spawnmenu.AddToolMenuOption("Utilities", "Admin", "CustomPickupAdminSettings", "Prop Pickup Enhanced", "", "", function(panel)
 		panel:ClearControls()
 		
+		panel:NumSlider("Grab Mode", "pe_grabMode", 0, 2, 0)
+
+		if not LocalPlayer():IsAdmin() then return end --don't display for non-admins
+
 		panel:Help("Server settings for the prop pickup system. Pickup modes are Disabled/Enabled/SWEP only")
 		
 		panel:NumSlider("Pickup Mode", "sv_peEnabled", 0, 2, 0)

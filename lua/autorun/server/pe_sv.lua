@@ -1,3 +1,12 @@
+local blacklist = {}
+
+if file.Exists("pe_blacklist.json", "DATA") then 
+	local raw = file.Read("pe_blacklist.json", "DATA")
+	for _, class in ipairs(util.JSONToTable(raw)) do 
+		blacklist[class] = true
+	end
+end
+
 -- CSLua
 AddCSLuaFile("autorun/client/pe_cl.lua")
 AddCSLuaFile("weapons/weapon_prop_pickup_enhanced_hands.lua")
@@ -6,9 +15,10 @@ AddCSLuaFile("weapons/weapon_prop_pickup_enhanced_hands.lua")
 local peAllowedClasses = {}
 
 -- helper functions, you can call these from your own addons if you wish to allow a class to be picked up
-function peAllowClass(class,isAllowed)
+function peAllowClass(class, isAllowed)
 	peAllowedClasses[class] = isAllowed ~= nil and true or isAllowed
 end
+
 function peIsClassAllowed(class) -- added this just in case you wish to do some checking
 	return peAllowedClasses[class] == true
 end
@@ -22,6 +32,7 @@ local isEnabled = pickupMode > 0
 local swepOnly = pickupMode == 2
 local maxGrabDistance = CreateConVar("sv_peMaxGrabDistance", "75", {FCVAR_ARCHIVE, FCVAR_NOTIFY, FCVAR_REPLICATED}, "How far players should be able to grab props from"):GetFloat()
 local maxWeight = CreateConVar("sv_peMaxWeight", "20", {FCVAR_ARCHIVE, FCVAR_NOTIFY, FCVAR_REPLICATED}, "The heavier a prop is compared to this, the harder it is to move it"):GetFloat()
+local blacklistIsAWhitelist = CreateConVar("sv_peBlacklistIsAWhitelist", "0", {FCVAR_ARCHIVE, FCVAR_NOTIFY, FCVAR_REPLICATED}, "Makes the entity class blacklist a whitelist"):GetBool()
 
 -- callbacks to update values, took way too long to figure this out... i had all of the checking and updating happening in the think loop...
 cvars.AddChangeCallback("sv_peEnabled", function()
@@ -45,8 +56,11 @@ end )
 local function setHeldEntity(ply, ent)
 	ply:SetNWBool("pe_blockGrabbing", nil)
 	ply:SetNWEntity("pe_heldEntity", ent == nil and NULL or ent) --do this so starfall peeps can access it
-	if not IsValid(ent) then return end --if set to nil entity (aka clearing entity)
+	ply:SetNWFloat("pe_lastGrabbed", CurTime())
+	ply:SetNWBool("pe_holding", IsValid(ent) and true or nil)
 	
+	if not IsValid(ent) then ply:SetNWBool("pe_grabToggle", false); return end --if set to nil entity (aka clearing entity)
+
 	ent.pe_heldProperties = ent.pe_heldProperties or {}
 
 	local aimPos = ply:GetEyeTrace().HitPos
@@ -126,10 +140,12 @@ end
 --find entity to grab
 local prevWeapon = {}
 hook.Add("PlayerUse", "_pePlayerUse", function(ply, ent)
-	if not IsValid(ply) or not IsValid(ent) then return end 
+	if not IsValid(ply) or not IsValid(ent) or IsValid(ply:GetNWEntity("pe_heldEntity")) then return end 
+
 	local activeWeapon = ply:GetActiveWeapon()
 	if not isEnabled or swepOnly then return end
 	
+	--block +use for the swep
 	if IsValid(activeWeapon) and activeWeapon:GetClass() == "weapon_prop_pickup_enhanced_hands" then 
 		return 
 	end
@@ -156,23 +172,6 @@ local function peReturnWeapon(ply)
 	end
 end
 
---released entity
-hook.Add("KeyRelease", "_peKeyUp", function(ply, key)
-	if not IsValid(ply) or not key or not IsFirstTimePredicted() then return end
-	if swepOnly then
-		if key == IN_ATTACK then
-			setHeldEntity(ply, nil)
-			peReturnWeapon(ply)
-		end
-	else
-		local activeWeapon = ply:GetActiveWeapon()
-		if (IsValid(activeWeapon) and activeWeapon:GetClass() == "weapon_prop_pickup_enhanced_hands") and key == IN_ATTACK or key == IN_USE then
-			setHeldEntity(ply, nil)
-			peReturnWeapon(ply)
-		end
-	end
-end)
-
 -- helper function
 local function ClampToRange(vector, maxDistance)
 	return vector:GetNormalized() * math.min(vector:Length(), maxDistance)
@@ -191,13 +190,30 @@ local function ApplyForceOffsetFixed(ent, force, pos)
 	ent:ApplyTorqueCenter(angf)
 end
 
+local function isHolding(ply)
+	if ply:KeyDown(IN_USE) or ply:KeyDown(IN_ATTACK) then 
+		if ply:GetInfoNum("pe_grabMode", 0) == 1 and ply:GetNWBool("pe_grabToggle") then ply:SetNWBool("pe_grabToggle", false) end--disable toggle
+		return true 
+	end 
+	
+	--no longer pressing +use or +attack
+	if ply:GetInfoNum("pe_grabMode", 0) == 1 then 
+		if (ply:GetNWFloat("pe_lastGrabbed")+0.2) > CurTime() then --tapped key
+			ply:SetNWBool("pe_grabToggle", true) 
+		end
+	end
+	
+	if ply:GetNWBool("pe_grabToggle") then return true end
+	return false 
+end
+
 --main loop
 hook.Add("Think","_peServerMain",function()
 	for _, ply in ipairs(player.GetHumans()) do 
-		if not IsValid(ply) or not ply:Alive() or ply:GetNWBool("pe_blockGrabbing") then continue end --dead or nil 
+		if not IsValid(ply) or not ply:Alive() or ply:GetNWBool("pe_blockGrabbing") or not ply:GetNWBool("pe_holding") then continue end --dead or nil 
 
 		local ent = ply:GetNWEntity("pe_heldEntity")
-		if not IsValid(ent) or not (IsValid(ent:GetPhysicsObject()) and ent:GetPhysicsObject():IsMoveable()) or ent:IsMarkedForDeletion() then
+		if not IsValid(ent) or not (IsValid(ent:GetPhysicsObject()) and ent:GetPhysicsObject():IsMoveable()) or ent:IsMarkedForDeletion() or not isHolding(ply) then
 			setHeldEntity(ply, nil)
 			peReturnWeapon(ply)
 			continue
@@ -221,7 +237,7 @@ hook.Add("Think","_peServerMain",function()
 		local damp = (physObj:GetVelocityAtPoint(holdPos)) * 0.1
 		local force = (diffClamped - damp) * (carryForce * carryForce)
 		
-		if diff:Length() > maxGrabDistance or (not swepOnly and not ply:KeyDown(IN_USE)) then 
+		if diff:Length() > maxGrabDistance then 
 			setHeldEntity(ply, nil)
 			peReturnWeapon(ply)
 			continue 
