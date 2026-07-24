@@ -45,4 +45,4 @@ NW variables
 
 [Mini showcase on youtube](https://www.youtube.com/watch?v=SVSmuC1lYFo)
 
-[Garry's Mod Workshop Version](https://steamcommunity.com/sharedfiles/filedetails/?id=3769668689) | Status: Up to Date
+[Garry's Mod Workshop Version](https://steamcommunity.com/sharedfiles/filedetails/?id=3769668689) | Status: Nu uhh
