@@ -12,12 +12,25 @@ AddCSLuaFile("autorun/client/pe_cl.lua")
 AddCSLuaFile("weapons/weapon_prop_pickup_enhanced_hands.lua")
 
 -- helper functions, you can call these from your own addons if you wish to allow a class to be picked up
+local debounce = 0
 function peBlacklistClass(class)
 	if blacklist[class] then return end 
 	blacklist[class] = true
+	if debounce < CurTime()+1 then return end 
+	debounce = CurTime()
+	file.Write("pe_blacklist.json", util.TableToJSON(table.GetKeys(blacklist)))
+end
+
+function peUnBlacklistClass(class)
+	if not blacklist[class] then return end 
+	blacklist[class] = nil
+	if debounce < CurTime()+1 then return end 
+	debounce = CurTime()
+	file.Write("pe_blacklist.json", util.TableToJSON(table.GetKeys(blacklist)))
 end
 
 timer.Create("pe_fileSave", 1, 0, function()
+	if debounce < CurTime()+1 then return end 
 	file.Write("pe_blacklist.json", util.TableToJSON(table.GetKeys(blacklist)))
 end)
 

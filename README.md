@@ -30,6 +30,7 @@ For developers:
 
 Functions:
 peBlacklistClass(class)			--- Adds the entity class to the blacklist
+peUnBlacklistClass(class)		--- Remove class from blacklist
 
 peCheckBlacklist(class)        	--- Returns true if class is allowed, even if not defined to be allowed/disallowed prior (if the class does not return true, returns false)
 
