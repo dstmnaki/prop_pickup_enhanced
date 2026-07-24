@@ -11,20 +11,19 @@ end
 AddCSLuaFile("autorun/client/pe_cl.lua")
 AddCSLuaFile("weapons/weapon_prop_pickup_enhanced_hands.lua")
 
--- allowed classes system
-local peAllowedClasses = {}
-
 -- helper functions, you can call these from your own addons if you wish to allow a class to be picked up
-function peAllowClass(class, isAllowed)
-	peAllowedClasses[class] = isAllowed ~= nil and true or isAllowed
+function peAllowClass(class)
+	if blacklist[class] then return end 
+	blacklist[class] = true
 end
 
-function peIsClassAllowed(class) -- added this just in case you wish to do some checking
-	return peAllowedClasses[class] == true
-end
+timer.Create("pe_fileSave", 1, 0, function()
+	file.Write("pe_blacklist.json", util.TableToJSON(table.GetKeys(blacklist)))
+end)
 
--- if you really wish, you can disallow this by writing your own addon that sets this to false (or nil), tho i'd toss it to a timer so these are defined first
-peAllowClass("prop_physics",true)
+function peCheckBlacklist(class) -- added this just in case you wish to do some checking
+	return blacklist[class] == true
+end
 
 -- convar stuff
 local pickupMode = CreateConVar("sv_peEnabled", "1", {FCVAR_ARCHIVE, FCVAR_NOTIFY, FCVAR_REPLICATED}, "0/1/2 | Disabled/Enabled/SWEP only"):GetInt()
@@ -42,16 +41,6 @@ cvars.AddChangeCallback("sv_peEnabled", function()
 end)
 cvars.AddChangeCallback("sv_peMaxGrabDistance", function() maxGrabDistance = GetConVar("sv_peMaxGrabDistance"):GetFloat() end)
 cvars.AddChangeCallback("sv_peMaxWeight", function() maxWeight = GetConVar("sv_peMaxWeight"):GetFloat() end)
-
--- block default prop pickup if the system is enabled
-hook.Add("AllowPlayerPickup", "_peBlockPickup", function(ply, ent)
-	--if swep is equipped
-	local wep = ply:GetActiveWeapon()
-	if swepOnly and IsValid(wep) and wep:GetClass() == "weapon_prop_pickup_enhanced_hands" then return false end 
-
-	--otherwise, check if enabled
-	if isEnabled and not swepOnly then return false end
-end )
 
 local function setHeldEntity(ply, ent)
 	ply:SetNWBool("pe_blockGrabbing", nil)
@@ -107,6 +96,11 @@ local function CanPlayerGrabProp(ply, ent)
 	ent.pe_blockgrabbing or
 	not (IsValid(ent:GetPhysicsObject()) and ent:GetPhysicsObject():IsMoveable()) then
 		return false
+	end
+
+	if blacklist[class] and not blacklistIsAWhitelist 
+	or not blacklist[class] and blacklistIsAWhitelist then 
+		return false 
 	end
 	
 	local allow = hook.Run("PE_CanPickupProp", ply, ent)

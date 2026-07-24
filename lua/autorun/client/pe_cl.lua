@@ -12,7 +12,7 @@ end) -- prevent weapon selection entirely when holding a prop
 
 
 hook.Add("PopulateToolMenu", "_peAdminMenuSettings", function()
-	spawnmenu.AddToolMenuOption("Utilities", "Admin", "CustomPickupAdminSettings", "Prop Pickup Enhanced", "", "", function(panel)
+	spawnmenu.AddToolMenuOption("Utilities", "User", "CustomPickupAdminSettings", "Prop Pickup Enhanced", "", "", function(panel)
 		panel:ClearControls()
 		
 		panel:NumSlider("Grab Mode", "pe_grabMode", 0, 2, 0)
