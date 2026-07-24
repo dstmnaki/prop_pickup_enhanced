@@ -12,7 +12,7 @@ AddCSLuaFile("autorun/client/pe_cl.lua")
 AddCSLuaFile("weapons/weapon_prop_pickup_enhanced_hands.lua")
 
 -- helper functions, you can call these from your own addons if you wish to allow a class to be picked up
-function peAllowClass(class)
+function peBlacklistClass(class)
 	if blacklist[class] then return end 
 	blacklist[class] = true
 end
@@ -92,14 +92,14 @@ local function CanPlayerGrabProp(ply, ent)
 	if not IsValid(ply) or
 	not IsValid(ent) or
 	ent:IsMarkedForDeletion() or
-	peAllowedClasses[ent:GetClass()] ~= true or
 	ent.pe_blockgrabbing or
 	not (IsValid(ent:GetPhysicsObject()) and ent:GetPhysicsObject():IsMoveable()) then
 		return false
 	end
 
-	if blacklist[class] and not blacklistIsAWhitelist 
-	or not blacklist[class] and blacklistIsAWhitelist then 
+	local class = ent:GetClass()
+	if (peCheckBlacklist(class) and not blacklistIsAWhitelist) 
+	or (not peCheckBlacklist(class) and blacklistIsAWhitelist) then 
 		return false 
 	end
 	
